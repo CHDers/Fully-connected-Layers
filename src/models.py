@@ -23,6 +23,17 @@ import matplotlib
 font = {'family': 'Times New Roman', 'size': '14'}  # SimSun宋体 'weight':'bold',
 matplotlib.rc('font', **font)
 
+from pathlib import Path
+import sys
+
+FILE = Path(__file__).resolve()
+ROOT_0 = FILE.parents[0]  # project root directory
+ROOT_1 = FILE.parents[1]  # project root directory
+if str(ROOT_0) not in sys.path:
+    sys.path.append(str(ROOT_0))  # add ROOT to PATH
+if str(ROOT_1) not in sys.path:
+    sys.path.append(str(ROOT_1))  # add ROOT to PATH
+
 
 # 定义自定义数据集类
 class CustomDataset(Dataset):
