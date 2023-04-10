@@ -33,6 +33,7 @@ if str(ROOT_0) not in sys.path:
     sys.path.append(str(ROOT_0))  # add ROOT to PATH
 if str(ROOT_1) not in sys.path:
     sys.path.append(str(ROOT_1))  # add ROOT to PATH
+from src.Config import ModelConfig
 
 
 # 定义自定义数据集类
@@ -57,6 +58,7 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(node_size[0], node_size[1])
         self.fc3 = nn.Linear(node_size[1], node_size[2])
         self.fc4 = nn.Linear(node_size[2], node_size[3])
+
         self.fc5 = nn.Linear(node_size[3], output_size)
 
     def forward(self, x):
@@ -94,6 +96,117 @@ def evaluate(model, criterion, val_loader, device):
             loss = criterion(outputs, labels)
             val_loss += loss.item() * inputs.size(0)
     return val_loss / len(val_loader.dataset)
+
+
+def load_model_to_predict(model_path: str, input_val_data: object, features_num: int = 4) -> None:
+    """
+    加载最优模型进行预测
+    :param features_num: 模型的输入特征数
+    :param model_path: 最优模型路径
+    :param input_val_data: 预测数据(有标签)
+    :return:
+    """
+    device = ModelConfig.DEVICE
+    # 加载路径为'model.pth'的模型
+    model_state_dict = torch.load(model_path)
+
+    # 创建新的神经网络模型
+    model = Net(int(features_num), 1).to(device)
+
+    # 用加载的模型状态字典更新模型参数
+    model.load_state_dict(model_state_dict)
+
+    # 进行预测
+    val_dataset = CustomDataset(input_val_data)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+    model.eval()
+    real_value_list, pred_value_list = [], []
+    with torch.no_grad():
+        for inputs, labels in val_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            predict_value = model(inputs)
+            real_value_list += [item for sublist in labels.cpu().tolist() for item in sublist]
+            pred_value_list += [item for sublist in predict_value.cpu().tolist() for item in sublist]
+
+    # 绘图
+    plt.figure(figsize=(10, 6))
+    plt.plot(real_value_list[:300], label='real')
+    plt.plot(pred_value_list[:300], label='predict')
+    plt.legend()
+    plt.savefig("../run/figure/predict.svg", bbox_inches='tight')
+    plt.show()
+
+    # 保存结果到本地
+    with open('../run/result/predict_result.json', 'w') as f:
+        f.write(json.dumps({"real_value": real_value_list, "pred_value": pred_value_list}))
+
+
+def predict_single_value(model_path: str, val_data=torch.Tensor(1, 4)) -> None:
+    """
+    只预测值，不进行验证
+    :param model_path: 模型本地路径
+    :param val_data: 需要预测的自变量值(无标签)
+    :return:
+    """
+    device = ModelConfig.DEVICE
+    # 加载神经网络模型
+    model = Net(4, 1).to(device)
+    model_state_dict = torch.load(model_path)
+    model.load_state_dict(model_state_dict)
+
+    model.eval()
+    with torch.no_grad():
+        # NOTE: 预测单个值
+        pred_value = [item for sublist in model(val_data.to(device)).cpu().tolist() for item in sublist]
+
+    # 保存结果到本地
+    with open('../run/predict_value.json', 'w') as f:
+        f.write(json.dumps({"pred_value": pred_value}))
+
+
+def select_line_to_predict(model_path: str, input_val_data: object, features_num: int = 4):
+    """
+    加载最优模型进行预测
+    :param features_num: 模型的输入特征数
+    :param model_path: 最优模型路径
+    :param input_val_data: 预测数据(有标签)
+    :return:
+    """
+    device = ModelConfig.DEVICE
+    # 加载路径为'model.pth'的模型
+    model_state_dict = torch.load(model_path)
+
+    # 创建新的神经网络模型
+    model = Net(int(features_num), 1).to(device)
+
+    # 用加载的模型状态字典更新模型参数
+    model.load_state_dict(model_state_dict)
+
+    # 进行预测
+    val_dataset = CustomDataset(input_val_data)
+    val_loader = DataLoader(val_dataset, batch_size=ModelConfig.BATCH_SIZE, shuffle=False)
+
+    model.eval()
+    real_value_list, pred_value_list = [], []
+    with torch.no_grad():
+        for inputs, labels in val_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            predict_value = model(inputs)
+            real_value_list += [item for sublist in labels.cpu().tolist() for item in sublist]
+            pred_value_list += [item for sublist in predict_value.cpu().tolist() for item in sublist]
+
+    # 绘图
+    plt.figure(figsize=(10, 6))
+    plt.plot(real_value_list[:300], label='real')
+    plt.plot(pred_value_list[:300], label='predict')
+    plt.legend()
+    plt.savefig("../run/figure/predict.svg", bbox_inches='tight')
+    plt.show()
+
+    # 保存结果到本地
+    with open('../run/result/predict_result.json', 'w') as f:
+        f.write(json.dumps({"real_value": real_value_list, "pred_value": pred_value_list}))
 
 
 # 定义主函数
@@ -162,72 +275,6 @@ def main(epochs: int = 300, file_path: str = None) -> None:
 
     print("------------开始预测---------------")
     load_model_to_predict(model_path="../run/best_model.pth", input_val_data=val_data)
-
-
-def load_model_to_predict(model_path: str, input_val_data: object) -> None:
-    """
-    加载最优模型进行预测
-    :param model_path: 最优模型路径
-    :param input_val_data: 预测数据(有标签)
-    :return:
-    """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # 加载路径为'model.pth'的模型
-    model_state_dict = torch.load(model_path)
-
-    # 创建新的神经网络模型
-    model = Net(4, 1).to(device)
-
-    # 用加载的模型状态字典更新模型参数
-    model.load_state_dict(model_state_dict)
-
-    # 进行预测
-    val_dataset = CustomDataset(input_val_data)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-
-    model.eval()
-    real_value_list, pred_value_list = [], []
-    with torch.no_grad():
-        for inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            predict_value = model(inputs)
-            real_value_list += [item for sublist in labels.cpu().tolist() for item in sublist]
-            pred_value_list += [item for sublist in predict_value.cpu().tolist() for item in sublist]
-
-    # 绘图
-    plt.figure(figsize=(10, 6))
-    plt.plot(real_value_list[:300], label='real')
-    plt.plot(pred_value_list[:300], label='predict')
-    plt.legend()
-    plt.savefig("../run/predict.svg", bbox_inches='tight')
-    plt.show()
-
-    # 保存结果到本地
-    with open('../run/predict_result.json', 'w') as f:
-        f.write(json.dumps({"real_value": real_value_list, "pred_value": pred_value_list}))
-
-
-def predict_single_value(model_path: str, val_data=torch.Tensor(1, 4)) -> None:
-    """
-    只预测值，不进行验证
-    :param model_path: 模型本地路径
-    :param val_data: 需要预测的自变量值(无标签)
-    :return:
-    """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # 加载神经网络模型
-    model = Net(4, 1).to(device)
-    model_state_dict = torch.load(model_path)
-    model.load_state_dict(model_state_dict)
-
-    model.eval()
-    with torch.no_grad():
-        # NOTE: 预测单个值
-        pred_value = [item for sublist in model(val_data.to(device)).cpu().tolist() for item in sublist]
-
-    # 保存结果到本地
-    with open('../run/predict_value.json', 'w') as f:
-        f.write(json.dumps({"pred_value": pred_value}))
 
 
 if __name__ == '__main__':
